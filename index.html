@@ -1,0 +1,1174 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador de Corte de Caudal y Gestión de Bocatoma</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #0f172a; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #475569; }
+        
+        .badge-pulse {
+            animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse-ring {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.03); }
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased">
+
+    <!-- Header Bar -->
+    <header class="bg-slate-900/90 backdrop-blur border-b border-slate-800 sticky top-0 z-50 shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2.5 bg-cyan-600/20 text-cyan-400 rounded-xl border border-cyan-500/30 shadow-inner">
+                    <i class="fa-solid fa-filter-circle-xmark text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold bg-gradient-to-r from-cyan-400 via-teal-300 to-amber-300 bg-clip-text text-transparent">
+                        Simulador de Corte de Caudal y Control de Bocatoma
+                    </h1>
+                    <p class="text-xs text-slate-400">Análisis Hidrológico, Umbrales Críticos y Gestión de Derivación</p>
+                </div>
+            </div>
+
+            <!-- Header Quick Indicators -->
+            <div class="flex flex-wrap items-center gap-2 sm:gap-4 text-xs font-mono">
+                <div class="bg-slate-900/90 px-3 py-1.5 rounded-lg border border-slate-800 flex items-center gap-2">
+                    <i class="fa-solid fa-clock text-slate-400"></i>
+                    <span class="text-slate-400">Duración:</span>
+                    <span id="header-duration" class="font-bold text-white">42 hrs</span>
+                </div>
+                <div id="header-status-badge" class="px-3 py-1.5 rounded-lg border flex items-center gap-2 bg-emerald-950/80 text-emerald-300 border-emerald-700/60 font-semibold">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                    <span id="header-status-text">Operación Normal</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Layout -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- Left Column: Data Input & Threshold Controls (5 Cols) -->
+        <div class="lg:col-span-5 flex flex-col gap-6">
+
+            <!-- Data Table Card -->
+            <div class="bg-slate-900 rounded-2xl border border-slate-800 p-5 shadow-xl flex flex-col">
+                <div class="flex justify-between items-center mb-3">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-table text-cyan-400"></i>
+                        <h2 class="font-bold text-slate-100 text-sm">Registros de Caudal $Q(t)$</h2>
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="btn-reset" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1.5 rounded-lg transition border border-slate-700 flex items-center gap-1">
+                            <i class="fa-solid fa-rotate-left"></i> Restablecer
+                        </button>
+                        <button id="btn-add-row" class="text-xs bg-cyan-600 hover:bg-cyan-500 text-white px-2.5 py-1.5 rounded-lg transition font-medium flex items-center gap-1 shadow">
+                            <i class="fa-solid fa-plus"></i> Añadir Punto
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Table Container -->
+                <div class="overflow-x-auto custom-scrollbar border border-slate-800 rounded-xl mb-2 max-h-52">
+                    <table class="w-full text-xs text-left text-slate-300">
+                        <thead class="text-[11px] text-slate-400 uppercase bg-slate-950/80 sticky top-0 border-b border-slate-800">
+                            <tr>
+                                <th scope="col" class="px-3 py-2.5 text-center">Tiempo $t$ (h)</th>
+                                <th scope="col" class="px-3 py-2.5 text-center">Caudal Río $Q$ (m³/s)</th>
+                                <th scope="col" class="px-2 py-2.5 text-center">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body" class="divide-y divide-slate-800/60 bg-slate-900/50">
+                            <!-- Rows injected dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Cutoff & Gate Controls Card -->
+            <div class="bg-slate-900 rounded-2xl border border-slate-800 p-5 shadow-xl flex flex-col gap-4">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-sliders text-amber-400"></i>
+                        <h2 class="font-bold text-slate-100 text-sm">Parámetros de Corte y Captación</h2>
+                    </div>
+                    <span class="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-950/80 text-amber-300 border border-amber-800/60 font-mono">Control Operativo</span>
+                </div>
+
+                <!-- Operation Mode Selector -->
+                <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
+                    <label class="block text-xs font-semibold text-slate-300 mb-2">Modo de Control de Bocatoma:</label>
+                    <div class="grid grid-cols-3 gap-2 text-xs">
+                        <button id="mode-auto" class="mode-btn bg-cyan-600 text-white font-medium py-1.5 px-2 rounded-lg border border-cyan-500 transition text-center shadow">
+                            <i class="fa-solid fa-robot mr-1"></i> Automático
+                        </button>
+                        <button id="mode-manual" class="mode-btn bg-slate-800 text-slate-400 font-medium py-1.5 px-2 rounded-lg border border-slate-700 transition text-center hover:bg-slate-700">
+                            <i class="fa-solid fa-hand mr-1"></i> Manual
+                        </button>
+                        <button id="mode-emergency" class="mode-btn bg-slate-800 text-slate-400 font-medium py-1.5 px-2 rounded-lg border border-slate-700 transition text-center hover:bg-slate-700">
+                            <i class="fa-solid fa-triangle-exclamation mr-1"></i> Corte Total
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Manual Gate Slider (Shown when active or fine-tuning) -->
+                <div id="manual-gate-container" class="bg-slate-950/50 p-3 rounded-xl border border-slate-800 flex flex-col gap-1">
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="text-slate-300 font-medium"><i class="fa-solid fa-door-open text-cyan-400 mr-1"></i> Apertura Compuerta:</span>
+                        <span id="gate-opening-val" class="font-mono font-bold text-cyan-300">100 %</span>
+                    </div>
+                    <input type="range" id="gate-slider" min="0" max="100" value="100" class="w-full accent-cyan-400 h-2 bg-slate-800 rounded-lg cursor-pointer">
+                </div>
+
+                <!-- Threshold Inputs Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+
+                    <!-- Q_eco threshold -->
+                    <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800/80">
+                        <label for="q-eco-input" class="block text-[11px] font-medium text-emerald-400 mb-1" title="Caudal mínimo reservado para el ecosistema del río">
+                            <i class="fa-solid fa-leaf mr-1"></i> $Q_{eco}$ Mínimo
+                        </label>
+                        <div class="flex items-center gap-1">
+                            <input type="number" id="q-eco-input" value="2600" min="0" step="10"
+                                   class="bg-slate-900 border border-slate-700 text-slate-100 text-xs rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block w-full p-1.5 text-right font-mono font-bold">
+                            <span class="text-[10px] text-slate-400">m³/s</span>
+                        </div>
+                        <p class="text-[10px] text-slate-500 mt-1">Si $Q < Q_{eco} \to$ Corte por Estiaje.</p>
+                    </div>
+
+                    <!-- Q_max_cap threshold -->
+                    <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800/80">
+                        <label for="q-cap-input" class="block text-[11px] font-medium text-cyan-400 mb-1" title="Capacidad máxima física del canal de captación">
+                            <i class="fa-solid fa-faucet-drip mr-1"></i> $Q_{max}$ Captación
+                        </label>
+                        <div class="flex items-center gap-1">
+                            <input type="number" id="q-cap-input" value="250" min="0" step="10"
+                                   class="bg-slate-900 border border-slate-700 text-slate-100 text-xs rounded-lg focus:ring-cyan-500 focus:border-cyan-500 block w-full p-1.5 text-right font-mono font-bold">
+                            <span class="text-[10px] text-slate-400">m³/s</span>
+                        </div>
+                        <p class="text-[10px] text-slate-500 mt-1">Tope máximo diverted.</p>
+                    </div>
+
+                    <!-- Q_alert threshold -->
+                    <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800/80">
+                        <label for="q-alert-input" class="block text-[11px] font-medium text-rose-400 mb-1" title="Caudal máximo seguro antes de cerrar por creciente/sedimentos">
+                            <i class="fa-solid fa-shield-cat mr-1"></i> $Q_{alerta}$ Creciente
+                        </label>
+                        <div class="flex items-center gap-1">
+                            <input type="number" id="q-alert-input" value="2950" min="0" step="10"
+                                   class="bg-slate-900 border border-slate-700 text-slate-100 text-xs rounded-lg focus:ring-rose-500 focus:border-rose-500 block w-full p-1.5 text-right font-mono font-bold">
+                            <span class="text-[10px] text-slate-400">m³/s</span>
+                        </div>
+                        <p class="text-[10px] text-slate-500 mt-1">Si $Q > Q_{alerta} \to$ Corte Emergencia.</p>
+                    </div>
+
+                </div>
+
+                <!-- Hydrological Summary Metrics Grid -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-slate-800">
+                    <div class="bg-slate-950/80 p-2.5 rounded-xl border border-slate-800">
+                        <div class="text-[10px] text-slate-400">Vol. Captado</div>
+                        <div id="metric-v-cap" class="text-xs font-bold text-cyan-300 mt-0.5">0.0 hm³</div>
+                    </div>
+                    <div class="bg-slate-950/80 p-2.5 rounded-xl border border-slate-800">
+                        <div class="text-[10px] text-slate-400">Vol. Río Abajo</div>
+                        <div id="metric-v-river" class="text-xs font-bold text-emerald-400 mt-0.5">0.0 hm³</div>
+                    </div>
+                    <div class="bg-slate-950/80 p-2.5 rounded-xl border border-slate-800">
+                        <div class="text-[10px] text-slate-400">Horas en Corte</div>
+                        <div id="metric-cutoff-hours" class="text-xs font-bold text-amber-400 mt-0.5">0.0 hrs</div>
+                    </div>
+                    <div class="bg-slate-950/80 p-2.5 rounded-xl border border-slate-800">
+                        <div class="text-[10px] text-slate-400">% Eficiencia</div>
+                        <div id="metric-efficiency" class="text-xs font-bold text-indigo-300 mt-0.5">0.0 %</div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- Right Column: Visual Intake Hydraulic Canvas & Hydrograph (7 Cols) -->
+        <div class="lg:col-span-7 flex flex-col gap-6">
+
+            <!-- Hydrograph Split Chart -->
+            <div class="bg-slate-900 rounded-2xl border border-slate-800 p-5 shadow-xl flex flex-col">
+                <div class="flex flex-wrap justify-between items-center mb-3 gap-2">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-chart-area text-emerald-400"></i>
+                        <h2 class="font-bold text-slate-100 text-sm">Hidrograma con Umbrales y Zonas de Corte</h2>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-slate-400">Ajuste:</span>
+                        <select id="spline-type" class="bg-slate-950 text-xs border border-slate-800 text-slate-300 rounded-lg px-2 py-1 focus:ring-cyan-500 font-medium">
+                            <option value="spline">Spline Cúbico Suave</option>
+                            <option value="linear">Lineal (Trapecios)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Chart Canvas Container -->
+                <div class="relative w-full h-64 bg-slate-950/80 rounded-xl p-2 border border-slate-800">
+                    <canvas id="hydrographCanvas"></canvas>
+                </div>
+
+                <!-- Instantaneous Query Bar -->
+                <div class="mt-3 bg-slate-950/80 p-3 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+                    <div class="flex items-center gap-2">
+                        <span class="text-slate-400">Consultar tiempo $t$:</span>
+                        <input type="number" id="query-time" value="0" min="0" max="42" step="0.5" class="w-16 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-right text-cyan-300 font-mono font-bold">
+                        <span class="text-slate-400">hrs</span>
+                    </div>
+                    <div class="flex items-center gap-4 text-xs font-mono">
+                        <div><span class="text-slate-400">Q Río:</span> <span id="query-q-total" class="font-bold text-white">--</span></div>
+                        <div><span class="text-slate-400">Q Captado:</span> <span id="query-q-cap" class="font-bold text-cyan-300">--</span></div>
+                        <div><span class="text-slate-400">Q Río Abajo:</span> <span id="query-q-down" class="font-bold text-emerald-400">--</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Visual Intake Cutoff Simulation Canvas -->
+            <div class="bg-slate-900 rounded-2xl border border-slate-800 p-5 shadow-xl flex flex-col">
+                <div class="flex justify-between items-center mb-3">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-water-ladder text-cyan-400"></i>
+                        <h2 class="font-bold text-slate-100 text-sm">Simulación Visual 2D de Bocatoma y Compuerta de Corte</h2>
+                    </div>
+                    <div id="sim-status-pill" class="text-xs px-2.5 py-1 rounded-full bg-slate-950 text-slate-300 border border-slate-800 font-mono font-semibold flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                        <span id="sim-status-text">t = 0.0 h | Q = 2688 m³/s</span>
+                    </div>
+                </div>
+
+                <!-- Canvas Animation Surface -->
+                <div class="relative w-full h-60 bg-slate-950 rounded-xl overflow-hidden border border-slate-800 shadow-inner">
+                    <canvas id="intakeCanvas" class="w-full h-full block"></canvas>
+                </div>
+
+                <!-- Simulation Playback Controls -->
+                <div class="mt-4 flex flex-col gap-2">
+                    <div class="flex items-center gap-3">
+                        <button id="btn-play-pause" class="w-10 h-10 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white flex items-center justify-center transition shadow-lg shrink-0">
+                            <i id="play-icon" class="fa-solid fa-play"></i>
+                        </button>
+                        <input type="range" id="time-slider" min="0" max="42" step="0.1" value="0" class="w-full accent-cyan-400 cursor-pointer h-2 bg-slate-800 rounded-lg">
+                        <span id="time-slider-val" class="text-xs font-mono font-bold text-slate-300 w-16 text-right">0.0 h</span>
+                    </div>
+
+                    <div class="flex justify-between items-center text-xs text-slate-400 px-1">
+                        <div class="flex items-center gap-2">
+                            <span>Velocidad:</span>
+                            <button class="speed-btn px-2 py-0.5 rounded bg-slate-800 text-slate-200 hover:bg-slate-700 active font-mono" data-speed="1">1x</button>
+                            <button class="speed-btn px-2 py-0.5 rounded bg-slate-950 text-slate-400 hover:bg-slate-800 font-mono" data-speed="3">3x</button>
+                            <button class="speed-btn px-2 py-0.5 rounded bg-slate-950 text-slate-400 hover:bg-slate-800 font-mono" data-speed="10">10x</button>
+                        </div>
+                        <span class="italic text-[11px] text-slate-500">Representación física: Bocatoma, Compuerta de Corte, Canal y Aliviadero</span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Detailed Integration & Flow Partition Breakdown Table -->
+        <div class="lg:col-span-12 bg-slate-900 rounded-2xl border border-slate-800 p-5 shadow-xl">
+            <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-layer-group text-indigo-400"></i>
+                    <h2 class="font-bold text-slate-100 text-sm">Desglose de Integración y Reparto de Caudales por Sub-Intervalos</h2>
+                </div>
+                <div class="text-xs text-slate-400 font-mono">
+                    $\Delta V_i = \bar{Q}_i \cdot \Delta t_i \cdot 3600$
+                </div>
+            </div>
+
+            <div class="overflow-x-auto custom-scrollbar border border-slate-800 rounded-xl">
+                <table class="w-full text-xs text-left text-slate-300">
+                    <thead class="text-slate-400 uppercase bg-slate-950/90 border-b border-slate-800 text-[11px]">
+                        <tr>
+                            <th class="px-4 py-2.5">Sub-Intervalo ($i \to i+1$)</th>
+                            <th class="px-3 py-2.5 text-center">Duración $\Delta t$ (h)</th>
+                            <th class="px-3 py-2.5 text-right">$\bar{Q}$ Río (m³/s)</th>
+                            <th class="px-3 py-2.5 text-right">$\bar{Q}$ Captado (m³/s)</th>
+                            <th class="px-3 py-2.5 text-right">$\bar{Q}$ Río Abajo (m³/s)</th>
+                            <th class="px-3 py-2.5 text-right">Vol. Captado ($\text{hm}^3$)</th>
+                            <th class="px-3 py-2.5 text-right">Vol. Río Abajo ($\text{hm}^3$)</th>
+                            <th class="px-4 py-2.5 text-center">Estado Predominante</th>
+                        </tr>
+                    </thead>
+                    <tbody id="breakdown-body" class="divide-y divide-slate-800/60 bg-slate-900/40 font-mono">
+                        <!-- Rows computed dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        /* Initial dataset based on prompt table */
+        const DEFAULT_DATA = [
+            { t: 0, q: 2688.56 },
+            { t: 6, q: 2562.53 },
+            { t: 18, q: 2801.37 },
+            { t: 24, q: 2826.27 },
+            { t: 30, q: 2812.22 },
+            { t: 42, q: 2995.35 }
+        ];
+
+        /* Master State Object */
+        let state = {
+            data: JSON.parse(JSON.stringify(DEFAULT_DATA)),
+            splineType: 'spline',
+            operationMode: 'auto', // 'auto', 'manual', 'emergency'
+            manualGatePercent: 100, // 0 to 100%
+            qEco: 2600,            // Minimum required riverbed flow
+            qCapMax: 250,          // Max intake physical capacity
+            qAlert: 2950,          // Emergency flood cutoff threshold
+            animating: false,
+            animTime: 0,
+            animSpeed: 1,
+            lastFrameTime: null
+        };
+
+        let hydrographChart = null;
+        let animationFrameId = null;
+
+        // Sorting helper
+        function getSortedData() {
+            return [...state.data].sort((a, b) => a.t - b.t);
+        }
+
+        // Linear interpolation
+        function interpolateLinear(t, sorted) {
+            if (sorted.length === 0) return 0;
+            if (t <= sorted[0].t) return sorted[0].q;
+            if (t >= sorted[sorted.length - 1].t) return sorted[sorted.length - 1].q;
+
+            for (let i = 0; i < sorted.length - 1; i++) {
+                if (t >= sorted[i].t && t <= sorted[i + 1].t) {
+                    const ratio = (t - sorted[i].t) / (sorted[i + 1].t - sorted[i].t);
+                    return sorted[i].q + ratio * (sorted[i + 1].q - sorted[i].q);
+                }
+            }
+            return sorted[0].q;
+        }
+
+        // Monotone Cubic Hermite Spline
+        function createMonotoneCubicSpline(data) {
+            const n = data.length;
+            if (n < 2) return (t) => data[0]?.q || 0;
+
+            const x = data.map(d => d.t);
+            const y = data.map(d => d.q);
+            const dx = [], dy = [], slope = [];
+
+            for (let i = 0; i < n - 1; i++) {
+                dx.push(x[i + 1] - x[i]);
+                dy.push(y[i + 1] - y[i]);
+                slope.push(dy[i] / (dx[i] || 1e-6));
+            }
+
+            const c1s = [slope[0]];
+            for (let i = 0; i < slope.length - 1; i++) {
+                const m = slope[i];
+                const nextM = slope[i + 1];
+                if (m * nextM <= 0) {
+                    c1s.push(0);
+                } else {
+                    const commonDx = dx[i] + dx[i + 1];
+                    c1s.push(3 * commonDx / ((commonDx + dx[i + 1]) / m + (commonDx + dx[i]) / nextM));
+                }
+            }
+            c1s.push(slope[slope.length - 1]);
+
+            return function(t) {
+                if (t <= x[0]) return y[0];
+                if (t >= x[n - 1]) return y[n - 1];
+
+                let i = 0;
+                while (i < x.length - 2 && x[i + 1] < t) i++;
+
+                const h = x[i + 1] - x[i];
+                const diff = t - x[i];
+                const t1 = diff / h;
+                const t2 = t1 * t1;
+                const t3 = t2 * t1;
+
+                const h00 = 2 * t3 - 3 * t2 + 1;
+                const h10 = t3 - 2 * t2 + t1;
+                const h01 = -2 * t3 + 3 * t2;
+                const h11 = t3 - t2;
+
+                return h00 * y[i] + h10 * h * c1s[i] + h01 * y[i + 1] + h11 * h * c1s[i + 1];
+            };
+        }
+
+        // Evaluate total raw river discharge Q(t)
+        function getQTotalAtTime(t) {
+            const sorted = getSortedData();
+            if (state.splineType === 'spline') {
+                const splineFn = createMonotoneCubicSpline(sorted);
+                return Math.max(0, splineFn(t));
+            } else {
+                return Math.max(0, interpolateLinear(t, sorted));
+            }
+        }
+
+        /* 
+           Core Cutoff & Water Allocation Logic:
+           Evaluates effective Gate Opening (0-1), Q_captured, Q_downstream, and Cutoff Reason
+        */
+        function computeCutoffState(qTotal) {
+            let gatePercent = 100;
+            let status = 'NORMAL';
+            let statusLabel = 'Operación Normal';
+            let badgeClass = 'bg-emerald-950/80 text-emerald-300 border-emerald-700/60';
+
+            if (state.operationMode === 'emergency') {
+                gatePercent = 0;
+                status = 'CUTOFF_EMERGENCY_MANUAL';
+                statusLabel = 'Corte Manual Total';
+                badgeClass = 'bg-rose-950/80 text-rose-300 border-rose-700/60';
+            } else if (state.operationMode === 'manual') {
+                gatePercent = state.manualGatePercent;
+                statusLabel = `Gate Manual ${gatePercent}%`;
+                if (gatePercent === 0) {
+                    status = 'CUTOFF_MANUAL';
+                    badgeClass = 'bg-slate-800 text-slate-300 border-slate-600';
+                }
+            } else {
+                // AUTOMATIC MODE
+                if (qTotal < state.qEco) {
+                    gatePercent = 0;
+                    status = 'CUTOFF_LOW_FLOW';
+                    statusLabel = 'Corte por Estiaje (Q < Q_eco)';
+                    badgeClass = 'bg-amber-950/80 text-amber-300 border-amber-700/60';
+                } else if (qTotal > state.qAlert) {
+                    gatePercent = 0;
+                    status = 'CUTOFF_HIGH_FLOW';
+                    statusLabel = 'Corte Creciente (Q > Q_alerta)';
+                    badgeClass = 'bg-rose-950/80 text-rose-300 border-rose-700/60';
+                } else {
+                    gatePercent = 100;
+                    status = 'NORMAL';
+                    statusLabel = 'Operación Normal';
+                    badgeClass = 'bg-emerald-950/80 text-emerald-300 border-emerald-700/60';
+                }
+            }
+
+            // Available water for intake after reserving Q_eco
+            let availableForIntake = Math.max(0, qTotal - state.qEco);
+            if (state.operationMode === 'manual') {
+                // In manual mode, intake receives portion of total flow subject to physical gate
+                availableForIntake = qTotal;
+            }
+
+            // Apply gate opening percentage
+            let qTargetCap = availableForIntake * (gatePercent / 100);
+
+            // Cap at maximum physical intake design capacity QCapMax
+            let qCaptured = Math.min(qTargetCap, state.qCapMax);
+
+            // Remaining flow stays in the river bed
+            let qDownstream = Math.max(0, qTotal - qCaptured);
+
+            return {
+                qTotal,
+                qCaptured,
+                qDownstream,
+                gatePercent,
+                status,
+                statusLabel,
+                badgeClass
+            };
+        }
+
+        /* Calculate overall integration metrics across duration */
+        function computeHydrologyIntegration() {
+            const sorted = getSortedData();
+            if (sorted.length < 2) {
+                return { totalVolRiverHm3: 0, totalVolCapHm3: 0, cutoffHours: 0, efficiency: 0, breakdown: [] };
+            }
+
+            const steps = 200;
+            const tMin = sorted[0].t;
+            const tMax = sorted[sorted.length - 1].t;
+            const dtHours = (tMax - tMin) / steps;
+            const dtSec = dtHours * 3600;
+
+            let totalVolRiverM3 = 0;
+            let totalVolCapM3 = 0;
+            let totalVolDownstreamM3 = 0;
+            let cutoffTimeHours = 0;
+
+            // Step-by-step trapezoidal integration over dense grid for precise volumes
+            for (let i = 0; i < steps; i++) {
+                const t1 = tMin + i * dtHours;
+                const t2 = t1 + dtHours;
+
+                const st1 = computeCutoffState(getQTotalAtTime(t1));
+                const st2 = computeCutoffState(getQTotalAtTime(t2));
+
+                const qTotAvg = (st1.qTotal + st2.qTotal) / 2;
+                const qCapAvg = (st1.qCaptured + st2.qCaptured) / 2;
+                const qDownAvg = (st1.qDownstream + st2.qDownstream) / 2;
+
+                totalVolRiverM3 += qTotAvg * dtSec;
+                totalVolCapM3 += qCapAvg * dtSec;
+                totalVolDownstreamM3 += qDownAvg * dtSec;
+
+                if (st1.gatePercent === 0 || st1.status.startsWith('CUTOFF')) {
+                    cutoffTimeHours += dtHours;
+                }
+            }
+
+            // Coarse interval breakdown table calculation matching station intervals
+            const breakdown = [];
+            for (let i = 0; i < sorted.length - 1; i++) {
+                const t1 = sorted[i].t;
+                const t2 = sorted[i + 1].t;
+                const dtSubHours = t2 - t1;
+
+                const cst1 = computeCutoffState(sorted[i].q);
+                const cst2 = computeCutoffState(sorted[i + 1].q);
+
+                const avgQTot = (cst1.qTotal + cst2.qTotal) / 2;
+                const avgQCap = (cst1.qCaptured + cst2.qCaptured) / 2;
+                const avgQDown = (cst1.qDownstream + cst2.qDownstream) / 2;
+
+                const subVolCapHm3 = (avgQCap * dtSubHours * 3600) / 1e6;
+                const subVolDownHm3 = (avgQDown * dtSubHours * 3600) / 1e6;
+
+                breakdown.push({
+                    intervalStr: `t=${t1}h → t=${t2}h`,
+                    dtSubHours,
+                    avgQTot,
+                    avgQCap,
+                    avgQDown,
+                    subVolCapHm3,
+                    subVolDownHm3,
+                    statusLabel: cst1.statusLabel
+                });
+            }
+
+            const totalVolCapHm3 = totalVolCapM3 / 1e6;
+            const totalVolDownHm3 = totalVolDownstreamM3 / 1e6;
+            const totalVolRiverHm3 = totalVolRiverM3 / 1e6;
+            const efficiency = totalVolRiverM3 > 0 ? (totalVolCapM3 / totalVolRiverM3) * 100 : 0;
+
+            return {
+                totalVolRiverHm3,
+                totalVolCapHm3,
+                totalVolDownHm3,
+                cutoffHours: cutoffTimeHours,
+                efficiency,
+                breakdown
+            };
+        }
+
+        // Render Data Table
+        function renderDataTable() {
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = '';
+
+            state.data.forEach((row, index) => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-800/60 transition";
+                tr.innerHTML = `
+                    <td class="px-2 py-1.5 text-center">
+                        <input type="number" step="0.1" value="${row.t}" data-index="${index}" data-field="t"
+                            class="table-input w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-center text-slate-100 font-mono text-xs focus:border-cyan-500">
+                    </td>
+                    <td class="px-2 py-1.5 text-center">
+                        <input type="number" step="0.01" value="${row.q}" data-index="${index}" data-field="q"
+                            class="table-input w-24 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-center text-slate-100 font-mono text-xs focus:border-cyan-500">
+                    </td>
+                    <td class="px-2 py-1.5 text-center">
+                        <button data-index="${index}" class="btn-delete-row text-rose-400 hover:text-rose-300 p-1 rounded hover:bg-slate-800 transition" title="Eliminar punto">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.querySelectorAll('.table-input').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    const idx = parseInt(e.target.dataset.index);
+                    const field = e.target.dataset.field;
+                    const val = parseFloat(e.target.value) || 0;
+                    state.data[idx][field] = val;
+                    updateAll();
+                });
+            });
+
+            document.querySelectorAll('.btn-delete-row').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const idx = parseInt(e.currentTarget.dataset.index);
+                    if (state.data.length <= 2) {
+                        alert("Se requieren al menos 2 puntos de medición.");
+                        return;
+                    }
+                    state.data.splice(idx, 1);
+                    updateAll();
+                });
+            });
+        }
+
+        // Render Metrics & Sub-Interval Table
+        function renderMetricsAndBreakdown() {
+            const metrics = computeHydrologyIntegration();
+            const sorted = getSortedData();
+
+            const minT = sorted.length > 0 ? sorted[0].t : 0;
+            const maxT = sorted.length > 0 ? sorted[sorted.length - 1].t : 42;
+
+            document.getElementById('header-duration').textContent = `${(maxT - minT).toFixed(1)} hrs`;
+            document.getElementById('metric-v-cap').textContent = `${metrics.totalVolCapHm3.toFixed(2)} hm³`;
+            document.getElementById('metric-v-river').textContent = `${metrics.totalVolDownHm3.toFixed(2)} hm³`;
+            document.getElementById('metric-cutoff-hours').textContent = `${metrics.cutoffHours.toFixed(1)} hrs`;
+            document.getElementById('metric-efficiency').textContent = `${metrics.efficiency.toFixed(1)} %`;
+
+            const slider = document.getElementById('time-slider');
+            slider.min = minT;
+            slider.max = maxT;
+            if (state.animTime < minT || state.animTime > maxT) {
+                state.animTime = minT;
+                slider.value = minT;
+            }
+
+            const tbody = document.getElementById('breakdown-body');
+            tbody.innerHTML = '';
+
+            metrics.breakdown.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-800/40 border-b border-slate-800/50";
+                tr.innerHTML = `
+                    <td class="px-4 py-2 text-slate-200 font-medium">${row.intervalStr}</td>
+                    <td class="px-3 py-2 text-center text-slate-400">${row.dtSubHours.toFixed(1)}</td>
+                    <td class="px-3 py-2 text-right text-slate-100">${row.avgQTot.toFixed(1)}</td>
+                    <td class="px-3 py-2 text-right text-cyan-300 font-semibold">${row.avgQCap.toFixed(1)}</td>
+                    <td class="px-3 py-2 text-right text-emerald-400 font-semibold">${row.avgQDown.toFixed(1)}</td>
+                    <td class="px-3 py-2 text-right text-cyan-400">${row.subVolCapHm3.toFixed(3)}</td>
+                    <td class="px-3 py-2 text-right text-emerald-400">${row.subVolDownHm3.toFixed(3)}</td>
+                    <td class="px-4 py-2 text-center text-[11px]">
+                        <span class="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700">${row.statusLabel}</span>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function initOrUpdateChart() {
+            const sorted = getSortedData();
+            const minT = sorted[0]?.t || 0;
+            const maxT = sorted[sorted.length - 1]?.t || 42;
+
+            const steps = 120;
+            const dt = (maxT - minT) / steps;
+
+            const ptsTotal = [];
+            const ptsCap = [];
+            const ptsEcoLine = [];
+            const ptsAlertLine = [];
+
+            for (let i = 0; i <= steps; i++) {
+                const curT = minT + i * dt;
+                const qTot = getQTotalAtTime(curT);
+                const st = computeCutoffState(qTot);
+
+                ptsTotal.push({ x: curT, y: qTot });
+                ptsCap.push({ x: curT, y: st.qCaptured });
+                ptsEcoLine.push({ x: curT, y: state.qEco });
+                ptsAlertLine.push({ x: curT, y: state.qAlert });
+            }
+
+            const rawMeasuredPts = sorted.map(d => ({ x: d.t, y: d.q }));
+            const currentSimState = computeCutoffState(getQTotalAtTime(state.animTime));
+
+            const ctx = document.getElementById('hydrographCanvas').getContext('2d');
+
+            if (!hydrographChart) {
+                hydrographChart = new Chart(ctx, {
+                    type: 'scatter',
+                    data: {
+                        datasets: [
+                            {
+                                label: 'Mediciones Estación',
+                                data: rawMeasuredPts,
+                                backgroundColor: '#f59e0b',
+                                borderColor: '#d97706',
+                                pointRadius: 5,
+                                showLine: false,
+                                order: 1
+                            },
+                            {
+                                label: 'Caudal Total Río Q(t)',
+                                data: ptsTotal,
+                                borderColor: '#0284c7',
+                                backgroundColor: 'rgba(2, 132, 199, 0.1)',
+                                borderWidth: 2.5,
+                                fill: true,
+                                pointRadius: 0,
+                                showLine: true,
+                                tension: 0,
+                                order: 3
+                            },
+                            {
+                                label: 'Caudal Captado Q_cap(t)',
+                                data: ptsCap,
+                                borderColor: '#14b8a6',
+                                backgroundColor: 'rgba(20, 184, 166, 0.25)',
+                                borderWidth: 2,
+                                fill: true,
+                                pointRadius: 0,
+                                showLine: true,
+                                order: 2
+                            },
+                            {
+                                label: 'Umbral Q_eco Mínimo',
+                                data: ptsEcoLine,
+                                borderColor: '#10b981',
+                                borderWidth: 1.5,
+                                borderDash: [6, 4],
+                                pointRadius: 0,
+                                showLine: true,
+                                fill: false,
+                                order: 4
+                            },
+                            {
+                                label: 'Umbral Q_alerta Creciente',
+                                data: ptsAlertLine,
+                                borderColor: '#f43f5e',
+                                borderWidth: 1.5,
+                                borderDash: [4, 4],
+                                pointRadius: 0,
+                                showLine: true,
+                                fill: false,
+                                order: 5
+                            },
+                            {
+                                label: 'Punto Actual Simulación',
+                                data: [{ x: state.animTime, y: currentSimState.qTotal }],
+                                backgroundColor: '#ec4899',
+                                borderColor: '#ffffff',
+                                borderWidth: 2,
+                                pointRadius: 7,
+                                pointStyle: 'rectRot',
+                                order: 0
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: { duration: 0 },
+                        scales: {
+                            x: {
+                                type: 'linear',
+                                title: { display: true, text: 'Tiempo t (horas)', color: '#94a3b8', font: { size: 10 } },
+                                grid: { color: 'rgba(51, 65, 85, 0.3)' },
+                                ticks: { color: '#cbd5e1', font: { size: 10 } }
+                            },
+                            y: {
+                                title: { display: true, text: 'Caudal Q (m³/s)', color: '#94a3b8', font: { size: 10 } },
+                                grid: { color: 'rgba(51, 65, 85, 0.3)' },
+                                ticks: { color: '#cbd5e1', font: { size: 10 } }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                labels: { color: '#e2e8f0', font: { size: 10 }, boxWidth: 12 }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        return `${ctx.dataset.label}: t=${ctx.parsed.x.toFixed(1)}h, Q=${ctx.parsed.y.toFixed(2)} m³/s`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            } else {
+                hydrographChart.data.datasets[0].data = rawMeasuredPts;
+                hydrographChart.data.datasets[1].data = ptsTotal;
+                hydrographChart.data.datasets[2].data = ptsCap;
+                hydrographChart.data.datasets[3].data = ptsEcoLine;
+                hydrographChart.data.datasets[4].data = ptsAlertLine;
+                hydrographChart.data.datasets[5].data = [{ x: state.animTime, y: currentSimState.qTotal }];
+                hydrographChart.update('none');
+            }
+        }
+
+        let riverParticles = [];
+        let intakeParticles = [];
+        const PARTICLE_COUNT = 35;
+
+        function initWaterParticles() {
+            riverParticles = [];
+            intakeParticles = [];
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                riverParticles.push({
+                    x: Math.random(),
+                    y: Math.random(),
+                    size: 1.5 + Math.random() * 2,
+                    speedOffset: 0.8 + Math.random() * 0.4
+                });
+                intakeParticles.push({
+                    x: Math.random(),
+                    y: Math.random(),
+                    size: 1.2 + Math.random() * 2,
+                    speedOffset: 0.8 + Math.random() * 0.4
+                });
+            }
+        }
+
+        /*
+           Renders full 2D Physical Diagram of Intake (Bocatoma) with:
+           - Main River Flow (Cauce Principal)
+           - Sluice Gate (Compuerta de Corte con altura física variante)
+           - Diverted Canal (Canal de Derivación)
+           - Spillway Overtopping (Aliviadero de Excedentes)
+        */
+        function drawIntakeSimulation(timestamp) {
+            const canvas = document.getElementById('intakeCanvas');
+            if (!canvas) return;
+
+            const rect = canvas.getBoundingClientRect();
+            if (canvas.width !== rect.width || canvas.height !== rect.height) {
+                canvas.width = rect.width;
+                canvas.height = rect.height;
+            }
+
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width;
+            const h = canvas.height;
+
+            const qTotal = getQTotalAtTime(state.animTime);
+            const simState = computeCutoffState(qTotal);
+
+            // Update Status Pill in UI
+            document.getElementById('sim-status-text').textContent = `t = ${state.animTime.toFixed(1)} h | Q_rio = ${qTotal.toFixed(1)} m³/s | Q_cap = ${simState.qCaptured.toFixed(1)} m³/s`;
+            const headerBadge = document.getElementById('header-status-badge');
+            headerBadge.className = `px-3 py-1.5 rounded-lg border flex items-center gap-2 font-semibold ${simState.badgeClass}`;
+            document.getElementById('header-status-text').textContent = simState.statusLabel;
+
+            // Background Night Sky/Canyon
+            ctx.fillStyle = '#030712';
+            ctx.fillRect(0, 0, w, h);
+
+            // Geometry Coordinates
+            const riverTopY = h * 0.25;
+            const riverBottomY = h * 0.75;
+            const riverHeight = riverBottomY - riverTopY;
+
+            const intakeX = w * 0.45;       // X position of the intake structure
+            const intakeWidth = 45;         // Width of intake chamber
+            const canalYTop = riverTopY + 10;
+            const canalYBottom = riverTopY + 50;
+            const canalHeight = canalYBottom - canalYTop;
+
+            // 1. Concrete Structures Background
+            ctx.fillStyle = '#1e293b'; // Concrete structure color
+
+            // Upper Intake Wall & Gate Guide Structure
+            ctx.fillRect(intakeX, 0, intakeWidth, riverTopY + 5);
+            ctx.fillRect(intakeX + intakeWidth, 0, 15, h);
+
+            // Riverbed concrete weir / sill
+            ctx.fillRect(0, riverBottomY, w, h - riverBottomY);
+
+            // 2. Main River Water Body (Before & After Intake)
+            const qNorm = Math.min(1, Math.max(0.1, qTotal / 3200));
+            const mainSpeed = 0.002 + qNorm * 0.01;
+
+            // Main River Layer
+            const riverGrad = ctx.createLinearGradient(0, riverTopY, 0, riverBottomY);
+            riverGrad.addColorStop(0, '#0284c7');
+            riverGrad.addColorStop(1, '#0369a1');
+
+            ctx.fillStyle = riverGrad;
+            ctx.fillRect(0, riverTopY, w, riverHeight);
+
+            // 3. Water Particles in Main River Bed
+            ctx.fillStyle = 'rgba(224, 242, 254, 0.7)';
+            riverParticles.forEach(p => {
+                p.x += mainSpeed * p.speedOffset;
+                if (p.x > 1) p.x = 0;
+
+                const px = p.x * w;
+                const py = riverTopY + 5 + p.y * (riverHeight - 10);
+
+                // Skip drawing inside concrete intake wall
+                if (!(px > intakeX && px < intakeX + intakeWidth + 15 && py < canalYBottom)) {
+                    ctx.beginPath();
+                    ctx.arc(px, py, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+
+            // 4. Diverted Intake Canal Flow (Canal de Derivación)
+            const capNorm = Math.min(1, simState.qCaptured / Math.max(1, state.qCapMax));
+            if (simState.qCaptured > 0) {
+                const canalGrad = ctx.createLinearGradient(intakeX, canalYTop, w, canalYBottom);
+                canalGrad.addColorStop(0, 'rgba(20, 184, 166, 0.9)');
+                canalGrad.addColorStop(1, 'rgba(13, 148, 136, 0.9)');
+
+                ctx.fillStyle = canalGrad;
+                ctx.fillRect(intakeX, canalYTop, w - intakeX, canalHeight);
+
+                // Intake Canal Flow Particles
+                const intakeSpeed = 0.002 + capNorm * 0.015;
+                ctx.fillStyle = 'rgba(204, 251, 241, 0.8)';
+                intakeParticles.forEach(p => {
+                    p.x += intakeSpeed * p.speedOffset;
+                    if (p.x > 1) p.x = 0;
+
+                    const px = intakeX + p.x * (w - intakeX);
+                    const py = canalYTop + 4 + p.y * (canalHeight - 8);
+                    ctx.beginPath();
+                    ctx.arc(px, py, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            }
+
+            // 5. Draw Mechanical Sluice Gate (Compuerta de Corte)
+            // Height of gate opening varies with simState.gatePercent (0% closed, 100% open)
+            const gateOpenRatio = simState.gatePercent / 100;
+            const maxGateLowerY = canalYBottom; // Closed gate reaches bottom of canal
+            const currentGateBottomY = canalYBottom - (gateOpenRatio * canalHeight);
+
+            // Steel Gate Slab
+            ctx.fillStyle = '#475569';
+            ctx.fillRect(intakeX + 12, 0, 20, currentGateBottomY);
+
+            // Gate Frame & Red Hoist Indicator
+            ctx.fillStyle = simState.gatePercent === 0 ? '#ef4444' : (simState.gatePercent < 100 ? '#f59e0b' : '#10b981');
+            ctx.fillRect(intakeX + 8, currentGateBottomY - 6, 28, 7); // Gate lip / seal
+
+            // Mechanical Stem (Vástago de compuerta)
+            ctx.strokeStyle = '#94a3b8';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(intakeX + 22, 0);
+            ctx.lineTo(intakeX + 22, currentGateBottomY);
+            ctx.stroke();
+
+            // 6. Labels and Structural Annotations
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 11px Inter, sans-serif';
+            ctx.fillText('Cauce Principal del Río', 15, riverTopY - 8);
+
+            ctx.fillStyle = '#2dd4bf';
+            ctx.font = 'bold 10px Inter, sans-serif';
+            ctx.fillText(`Canal Derivado (${simState.qCaptured.toFixed(0)} m³/s)`, intakeX + 65, canalYTop - 6);
+
+            // Cutoff Warning Graphic Overlay on Gate if Cutoff active
+            if (simState.gatePercent === 0) {
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.85)';
+                ctx.fillRect(intakeX - 35, riverTopY + 15, 115, 22);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 10px Inter, sans-serif';
+                ctx.fillText('🚫 CORTE ACTIVO', intakeX - 25, riverTopY + 30);
+            }
+
+            // Downstream River Flow Label
+            ctx.fillStyle = '#64748b';
+            ctx.font = '10px Inter, sans-serif';
+            ctx.fillText(`Caudal Río Abajo: ${simState.qDownstream.toFixed(0)} m³/s`, 15, riverBottomY + 16);
+        }
+
+        // Main Animation Step Loop
+        function stepAnimation(timestamp) {
+            if (!state.lastFrameTime) state.lastFrameTime = timestamp;
+            const dtSec = (timestamp - state.lastFrameTime) / 1000;
+            state.lastFrameTime = timestamp;
+
+            if (state.animating) {
+                const sorted = getSortedData();
+                const minT = sorted[0]?.t || 0;
+                const maxT = sorted[sorted.length - 1]?.t || 42;
+
+                state.animTime += dtSec * state.animSpeed * 1.5;
+                if (state.animTime >= maxT) {
+                    state.animTime = maxT;
+                    state.animating = false;
+                    document.getElementById('play-icon').className = 'fa-solid fa-play';
+                }
+
+                document.getElementById('time-slider').value = state.animTime;
+                document.getElementById('time-slider-val').textContent = `${state.animTime.toFixed(1)} h`;
+                document.getElementById('query-time').value = state.animTime.toFixed(1);
+                updateQueryDisplay();
+
+                if (hydrographChart) {
+                    const qTot = getQTotalAtTime(state.animTime);
+                    hydrographChart.data.datasets[5].data = [{ x: state.animTime, y: qTot }];
+                    hydrographChart.update('none');
+                }
+            }
+
+            drawIntakeSimulation(timestamp);
+            animationFrameId = requestAnimationFrame(stepAnimation);
+        }
+
+        function updateQueryDisplay() {
+            const queryT = parseFloat(document.getElementById('query-time').value) || 0;
+            const qTot = getQTotalAtTime(queryT);
+            const st = computeCutoffState(qTot);
+
+            document.getElementById('query-q-total').textContent = `${qTot.toFixed(1)} m³/s`;
+            document.getElementById('query-q-cap').textContent = `${st.qCaptured.toFixed(1)} m³/s`;
+            document.getElementById('query-q-down').textContent = `${st.qDownstream.toFixed(1)} m³/s`;
+        }
+
+        function updateAll() {
+            renderDataTable();
+            renderMetricsAndBreakdown();
+            initOrUpdateChart();
+            updateQueryDisplay();
+        }
+
+        // Attach Event Listeners
+        function setupEventListeners() {
+            document.getElementById('btn-add-row').addEventListener('click', () => {
+                const sorted = getSortedData();
+                const lastT = sorted.length > 0 ? sorted[sorted.length - 1].t : 0;
+                const lastQ = sorted.length > 0 ? sorted[sorted.length - 1].q : 2500;
+                state.data.push({ t: lastT + 6, q: Math.round(lastQ * 1.04 * 100) / 100 });
+                updateAll();
+            });
+
+            document.getElementById('btn-reset').addEventListener('click', () => {
+                state.data = JSON.parse(JSON.stringify(DEFAULT_DATA));
+                state.animTime = 0;
+                document.getElementById('time-slider').value = 0;
+                document.getElementById('time-slider-val').textContent = "0.0 h";
+                updateAll();
+            });
+
+            // Threshold inputs
+            document.getElementById('q-eco-input').addEventListener('input', (e) => {
+                state.qEco = parseFloat(e.target.value) || 0;
+                updateAll();
+            });
+            document.getElementById('q-cap-input').addEventListener('input', (e) => {
+                state.qCapMax = parseFloat(e.target.value) || 0;
+                updateAll();
+            });
+            document.getElementById('q-alert-input').addEventListener('input', (e) => {
+                state.qAlert = parseFloat(e.target.value) || 0;
+                updateAll();
+            });
+
+            // Spline type change
+            document.getElementById('spline-type').addEventListener('change', (e) => {
+                state.splineType = e.target.value;
+                initOrUpdateChart();
+                updateQueryDisplay();
+            });
+
+            // Manual gate slider
+            const gateSlider = document.getElementById('gate-slider');
+            gateSlider.addEventListener('input', (e) => {
+                state.manualGatePercent = parseInt(e.target.value);
+                document.getElementById('gate-opening-val').textContent = `${state.manualGatePercent} %`;
+                updateAll();
+            });
+
+            // Operation mode selector buttons
+            const modeBtns = {
+                'auto': document.getElementById('mode-auto'),
+                'manual': document.getElementById('mode-manual'),
+                'emergency': document.getElementById('mode-emergency')
+            };
+
+            Object.keys(modeBtns).forEach(modeKey => {
+                modeBtns[modeKey].addEventListener('click', () => {
+                    state.operationMode = modeKey;
+                    Object.keys(modeBtns).forEach(k => {
+                        modeBtns[k].className = (k === modeKey)
+                            ? 'mode-btn bg-cyan-600 text-white font-medium py-1.5 px-2 rounded-lg border border-cyan-500 transition text-center shadow'
+                            : 'mode-btn bg-slate-800 text-slate-400 font-medium py-1.5 px-2 rounded-lg border border-slate-700 transition text-center hover:bg-slate-700';
+                    });
+                    updateAll();
+                });
+            });
+
+            // Query time slider & input
+            document.getElementById('query-time').addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value) || 0;
+                state.animTime = val;
+                document.getElementById('time-slider').value = val;
+                document.getElementById('time-slider-val').textContent = `${val.toFixed(1)} h`;
+                updateQueryDisplay();
+                if (hydrographChart) {
+                    const qTot = getQTotalAtTime(val);
+                    hydrographChart.data.datasets[5].data = [{ x: val, y: qTot }];
+                    hydrographChart.update('none');
+                }
+            });
+
+            document.getElementById('time-slider').addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                state.animTime = val;
+                document.getElementById('time-slider-val').textContent = `${val.toFixed(1)} h`;
+                document.getElementById('query-time').value = val.toFixed(1);
+                updateQueryDisplay();
+                if (hydrographChart) {
+                    const qTot = getQTotalAtTime(val);
+                    hydrographChart.data.datasets[5].data = [{ x: val, y: qTot }];
+                    hydrographChart.update('none');
+                }
+            });
+
+            // Play / Pause button
+            document.getElementById('btn-play-pause').addEventListener('click', () => {
+                state.animating = !state.animating;
+                const sorted = getSortedData();
+                const maxT = sorted[sorted.length - 1]?.t || 42;
+
+                if (state.animating && state.animTime >= maxT) {
+                    state.animTime = sorted[0]?.t || 0;
+                }
+
+                document.getElementById('play-icon').className = state.animating ? 'fa-solid fa-pause' : 'fa-solid fa-play';
+            });
+
+            // Playback speed selection
+            document.querySelectorAll('.speed-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.speed-btn').forEach(b => {
+                        b.className = 'speed-btn px-2 py-0.5 rounded bg-slate-950 text-slate-400 hover:bg-slate-800 font-mono';
+                    });
+                    e.currentTarget.className = 'speed-btn px-2 py-0.5 rounded bg-slate-800 text-slate-200 hover:bg-slate-700 active font-mono';
+                    state.animSpeed = parseFloat(e.currentTarget.dataset.speed);
+                });
+            });
+        }
+
+        window.onload = function() {
+            initWaterParticles();
+            setupEventListeners();
+            updateAll();
+            animationFrameId = requestAnimationFrame(stepAnimation);
+        };
+    </script>
+</body>
+</html>
